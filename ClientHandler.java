@@ -4,11 +4,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public class ClientHandler implements Runnable {
 
-    public static ArrayList<ClientHandler> clientHandlers = new ArrayList<>();
+    public static HashMap<String, ClientHandler> clientHandlers = new HashMap<>();
+    public static Queue<String> messages = new LinkedList<>();
+
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
@@ -19,48 +23,55 @@ public class ClientHandler implements Runnable {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String loginCommand = bufferedReader.readLine();
-            if (!isValidLogin(loginCommand))
-                closeEverything(socket, bufferedReader, bufferedWriter);
-            this.clientUsername = loginCommand.substring(6);
-            clientHandlers.add(this); // add this client to the list of all clients
-            broadcastMessage("Server: " + clientUsername + " has connected!");
+            handleClientLogin();
         } catch (IOException e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
 
     }
 
-    public boolean isValidLogin(String command) {
-        String regex = "^LOGIN\\s\\S+$";
-        if (command.matches(regex)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    public void broadcastMessage(String message) {
-        for (ClientHandler clientHandler : clientHandlers) {
-            try {
-                if (!clientHandler.clientUsername.equals(clientUsername)) {
-                    clientHandler.bufferedWriter.write(message);
-                    clientHandler.bufferedWriter.newLine();
-                    clientHandler.bufferedWriter.flush();
-                }
-            } catch (IOException e) {
+    public void handleClientLogin() {
+        try {
+            String command = bufferedReader.readLine();
+            if (command.matches("^LOGIN\\s\\S+$")) {
+                clientUsername = command.substring(6);
+                clientHandlers.put(clientUsername, this);
+                sendServerMessage(Integer.toString(messages.size()));
+            } else {
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public void removeClientHandler() {
-        clientHandlers.remove(this);
-        broadcastMessage("Server: " + clientUsername + " has disconnected!");
+    public void sendClientMessage(String receiver, String message) {
+        try {
+            if (!clientHandlers.containsKey(receiver)) {
+
+            }
+
+            ClientHandler receiverClient = clientHandlers.get(receiver);
+            receiverClient.bufferedWriter.write(clientUsername + ": " + message);
+            receiverClient.bufferedWriter.newLine();
+            receiverClient.bufferedWriter.flush();
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+    }
+
+    public void sendServerMessage(String message) {
+        try {
+            bufferedWriter.write("Server: " + message);
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
     }
 
     public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
-        removeClientHandler();
+        clientHandlers.remove(clientUsername);
         try {
             if (bufferedReader != null) {
                 bufferedReader.close();
@@ -78,16 +89,43 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
-        String messageFromClient;
+        String commandFromClient;
 
         while (socket.isConnected()) {
             try {
-                messageFromClient = bufferedReader.readLine(); // blocking
-                if (messageFromClient.equals("EXIT")) {
-                    closeEverything(socket, bufferedReader, bufferedWriter);
-                    break; // exit the loop - client disconnected
+                commandFromClient = bufferedReader.readLine(); // blocking
+
+                switch (commandFromClient) {
+
+                    case "EXIT" -> {
+                        closeEverything(socket, bufferedReader, bufferedWriter);
+                        break;
+                    }
+
+                    case "READ" -> {
+                        while (!messages.isEmpty()) {
+                            bufferedWriter.write(messages.poll());
+                            bufferedWriter.newLine();
+                            bufferedWriter.flush();
+                        }
+                    }
+
+                    default -> {
+                        if (commandFromClient.matches("^COMPOSE\\s\\S+$")) {
+
+                            String receiver = commandFromClient.substring(8);
+                            String message = bufferedReader.readLine();
+
+                            if (receiver.equals(clientUsername)) {
+                                sendServerMessage("MESSAGE FAILED");
+                                break;
+                            }
+
+                            sendClientMessage(receiver, message);
+                        }
+                    }
                 }
-                broadcastMessage(messageFromClient);
+
             } catch (IOException e) {
                 closeEverything(socket, bufferedReader, bufferedWriter);
                 break; // exit the loop - client disconnected
