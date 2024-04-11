@@ -12,29 +12,28 @@ public class Client {
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
-    private String username;
 
-    public Client(Socket socket, String username) {
+    public Client(Socket socket) {
         try {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.username = username;
         } catch (Exception e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public void sendMessage() {
+    public void sendMessage(String login) {
         try {
-            bufferedWriter.write(username); // send the username to the server
+            bufferedWriter.write(login); // LOGIN <username> (e.g. LOGIN Alice)
             bufferedWriter.newLine();
             bufferedWriter.flush();
 
             Scanner scanner = new Scanner(System.in);
-            while (socket.isConnected()) {
+
+            while (!socket.isClosed()) {
                 String messageToSpend = scanner.nextLine();
-                bufferedWriter.write(username + ": " + messageToSpend);
+                bufferedWriter.write(messageToSpend);
                 bufferedWriter.newLine();
                 bufferedWriter.flush();
             }
@@ -52,6 +51,10 @@ public class Client {
                 while (socket.isConnected()) {
                     try {
                         messageFromChat = bufferedReader.readLine();
+
+                        if (messageFromChat == null)
+                            closeEverything(socket, bufferedReader, bufferedWriter);
+
                         System.out.println(messageFromChat);
                     } catch (Exception e) {
                         closeEverything(socket, bufferedReader, bufferedWriter);
@@ -72,6 +75,7 @@ public class Client {
             if (socket != null) {
                 socket.close();
             }
+            System.exit(0); // exit the program
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -79,12 +83,11 @@ public class Client {
 
     public static void main(String[] args) throws UnknownHostException, IOException {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("Enter your username: ");
-        String username = scanner.nextLine();
+        String loginCommand = scanner.nextLine();
         Socket socket = new Socket("localhost", 1234);
-        Client client = new Client(socket, username);
+        Client client = new Client(socket);
         client.listenForMessage();
-        client.sendMessage();
+        client.sendMessage(loginCommand);
     }
-    
+
 }

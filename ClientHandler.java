@@ -19,13 +19,25 @@ public class ClientHandler implements Runnable {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.clientUsername = bufferedReader.readLine();
+            String loginCommand = bufferedReader.readLine();
+            if (!isValidLogin(loginCommand))
+                closeEverything(socket, bufferedReader, bufferedWriter);
+            this.clientUsername = loginCommand.substring(6);
             clientHandlers.add(this); // add this client to the list of all clients
             broadcastMessage("Server: " + clientUsername + " has connected!");
         } catch (IOException e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
-        
+
+    }
+
+    public boolean isValidLogin(String command) {
+        String regex = "^LOGIN\\s\\S+$";
+        if (command.matches(regex)) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public void broadcastMessage(String message) {
@@ -71,6 +83,10 @@ public class ClientHandler implements Runnable {
         while (socket.isConnected()) {
             try {
                 messageFromClient = bufferedReader.readLine(); // blocking
+                if (messageFromClient.equals("EXIT")) {
+                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    break; // exit the loop - client disconnected
+                }
                 broadcastMessage(messageFromClient);
             } catch (IOException e) {
                 closeEverything(socket, bufferedReader, bufferedWriter);
