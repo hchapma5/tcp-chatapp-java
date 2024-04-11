@@ -8,10 +8,22 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 
+/**
+ * TODO:
+ * 
+ * 1. Check if this is working on turing.une.edu.au server
+ * 2. Tidy up code and add comments for each function and any complicated code
+ * 3. Further test the program for bugs and errors
+ * 4. Go back over the assignment requirements and ensure everything is
+ * implemented
+ * 5. Implement bash scripts for running the server and client (given a port
+ * number)
+ */
+
 public class ClientHandler implements Runnable {
 
     public static HashMap<String, ClientHandler> clientHandlers = new HashMap<>();
-    public static Queue<String> messages = new LinkedList<>();
+    public static HashMap<String, Queue<String>> clientMessages = new HashMap<>();
 
     private Socket socket;
     private BufferedReader bufferedReader;
@@ -36,7 +48,12 @@ public class ClientHandler implements Runnable {
             if (command.matches("^LOGIN\\s\\S+$")) {
                 clientUsername = command.substring(6);
                 clientHandlers.put(clientUsername, this);
-                sendServerMessage(Integer.toString(messages.size()));
+                /* If client hasn't logged in before, store their messages */
+                if (clientMessages.get(clientUsername) == null) {
+                    clientMessages.put(clientUsername, new LinkedList<>());
+                }
+                /* Return the amount of messages stored for the client */
+                sendServerMessage(Integer.toString(clientMessages.get(clientUsername).size()));
             } else {
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
@@ -47,10 +64,15 @@ public class ClientHandler implements Runnable {
 
     public void sendClientMessage(String receiver, String message) {
         try {
+            /* client not online, cache messages in clientMessages */
             if (!clientHandlers.containsKey(receiver)) {
+                /* If the user hasn't logged in before, create entry in message bank */
+                if (clientMessages.get(receiver) == null)
+                    clientMessages.put(receiver, new LinkedList<>());
+                clientMessages.get(receiver).add(clientUsername + ": " + message);
+                sendServerMessage("MESSAGE SENT");
 
             }
-
             ClientHandler receiverClient = clientHandlers.get(receiver);
             receiverClient.bufferedWriter.write(clientUsername + ": " + message);
             receiverClient.bufferedWriter.newLine();
@@ -67,6 +89,19 @@ public class ClientHandler implements Runnable {
             bufferedWriter.flush();
         } catch (IOException e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+    }
+
+    public void readAllClientMessages() {
+        /* While clientMessages (queue) is not empty, send messages to client */
+        while (!clientMessages.get(clientUsername).isEmpty()) {
+            try {
+                bufferedWriter.write(clientMessages.get(clientUsername).poll());
+                bufferedWriter.newLine();
+                bufferedWriter.flush();
+            } catch (IOException e) {
+                closeEverything(socket, bufferedReader, bufferedWriter);
+            }
         }
     }
 
@@ -103,11 +138,7 @@ public class ClientHandler implements Runnable {
                     }
 
                     case "READ" -> {
-                        while (!messages.isEmpty()) {
-                            bufferedWriter.write(messages.poll());
-                            bufferedWriter.newLine();
-                            bufferedWriter.flush();
-                        }
+                        readAllClientMessages();
                     }
 
                     default -> {
@@ -122,6 +153,7 @@ public class ClientHandler implements Runnable {
                             }
 
                             sendClientMessage(receiver, message);
+                            sendServerMessage("MESSAGE SENT");
                         }
                     }
                 }
