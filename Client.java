@@ -1,12 +1,24 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.ConnectException;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.Scanner;
 
+/**
+ * TODO:
+ * 
+ * Safe guide Client:
+ * 1. should prompt user to enter a username, and automatically send a LOGIN
+ * message to the server
+ * 2. Client should guide the user through an interaction with the server until
+ * the user enters EXIT
+ * 3. Client should ensure only valid commands are sent to the server.
+ * 4. invalid client commands should result in notifying the user and request
+ * new input.
+ * 5. Add documentation for each function
+ */
 public class Client {
 
     private Socket socket;
@@ -33,11 +45,6 @@ public class Client {
 
             while (!socket.isClosed()) {
                 String messageToSpend = scanner.nextLine();
-
-                if (messageToSpend.equals("EXIT")) {
-                    closeEverything(socket, bufferedReader, bufferedWriter);
-                }
-
                 bufferedWriter.write(messageToSpend);
                 bufferedWriter.newLine();
                 bufferedWriter.flush();
@@ -93,14 +100,15 @@ public class Client {
 
     }
 
-    public static void main(String[] args) throws UnknownHostException, IOException {
-        if (args.length < 1) {
-            System.out.println("Usage: java Client <port>");
+    public static void main(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Usage: java Client <hostname> <port>");
             return; // exit if no port number provided
         }
 
         try {
-            int port = Integer.parseInt(args[0]);
+            String hostname = args[0];
+            int port = Integer.parseInt(args[1]);
             Scanner scanner = new Scanner(System.in);
             String login = scanner.nextLine();
             if (login.equals("EXIT"))
@@ -115,7 +123,7 @@ public class Client {
                 login = scanner.nextLine();
             }
 
-            Socket socket = new Socket("localhost", port);
+            Socket socket = new Socket(hostname, port);
             Client client = new Client(socket);
             client.listenForMessage();
             client.sendMessages(login);
@@ -123,6 +131,10 @@ public class Client {
         } catch (NumberFormatException e) {
             System.out.println("Invalid port number");
             return; // exit if invalid port number
+        } catch (ConnectException e) {
+            System.out.println("Connection refused. Server may be down.");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

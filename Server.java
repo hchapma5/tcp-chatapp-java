@@ -2,6 +2,11 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+/**
+ * TODO:
+ * Add documentation for each function
+ */
+
 class Server {
 
     private ServerSocket serverSocket;

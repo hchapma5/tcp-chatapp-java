@@ -4,13 +4,21 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 
+/**
+ * TODO:
+ * 1. If server needs to exit for anyreason, make sure you're prompting the user
+ * that something has gone wrong.
+ * 2. Add documentation for each function
+ */
+
 public class ClientHandler implements Runnable {
 
-    public static HashMap<String, ClientHandler> clientHandlers = new HashMap<>();
+    public static ArrayList<ClientHandler> clients = new ArrayList<>();
     public static HashMap<String, Queue<String>> clientMessages = new HashMap<>();
 
     private Socket socket;
@@ -35,7 +43,7 @@ public class ClientHandler implements Runnable {
             String command = bufferedReader.readLine();
             if (command != null && command.matches("^LOGIN\\s\\S+$")) {
                 clientUsername = command.substring(6);
-                clientHandlers.put(clientUsername, this);
+                clients.add(this);
                 /* If client hasn't logged in before, create message storage */
                 clientMessages.putIfAbsent(clientUsername, new LinkedList<>());
                 /* Return the amount of messages stored for the client */
@@ -51,23 +59,14 @@ public class ClientHandler implements Runnable {
 
     public void sendClientMessage(String receiver, String message) {
         try {
-            /* client not online, store message in message bank */
-            if (!clientHandlers.containsKey(receiver)) {
-                /* If the user hasn't logged in before, create entry in message bank */
-                if (clientMessages.get(receiver) == null)
-                    clientMessages.put(receiver, new LinkedList<>());
+            /* If the receiver hasn't logged in before, create entry in message bank */
+            if (clientMessages.get(receiver) == null)
+                clientMessages.put(receiver, new LinkedList<>());
 
-                clientMessages.get(receiver).add(clientUsername + ": " + message);
-                sendServerMessage("MESSAGE SENT");
-                return;
-
-            }
-            ClientHandler receiverClient = clientHandlers.get(receiver);
-            receiverClient.bufferedWriter.write(clientUsername + ": " + message);
-            receiverClient.bufferedWriter.newLine();
-            receiverClient.bufferedWriter.flush();
+            clientMessages.get(receiver).add(clientUsername + ": " + message);
             sendServerMessage("MESSAGE SENT");
-        } catch (IOException e) {
+            return;
+        } catch (Exception e) {
             sendServerMessage("MESSAGE FAILED");
         }
     }
@@ -95,13 +94,14 @@ public class ClientHandler implements Runnable {
                 bufferedWriter.newLine();
                 bufferedWriter.flush();
             } catch (IOException e) {
+                sendServerMessage("READ ERROR");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         }
     }
 
     public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
-        clientHandlers.remove(clientUsername);
+        clients.remove(this);
         try {
             if (bufferedReader != null) {
                 bufferedReader.close();
