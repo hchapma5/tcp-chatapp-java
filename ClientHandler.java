@@ -64,21 +64,24 @@ public class ClientHandler implements Runnable {
 
     public void sendClientMessage(String receiver, String message) {
         try {
-            /* client not online, cache messages in clientMessages */
+            /* client not online, store message in message bank */
             if (!clientHandlers.containsKey(receiver)) {
                 /* If the user hasn't logged in before, create entry in message bank */
                 if (clientMessages.get(receiver) == null)
                     clientMessages.put(receiver, new LinkedList<>());
+
                 clientMessages.get(receiver).add(clientUsername + ": " + message);
                 sendServerMessage("MESSAGE SENT");
+                return;
 
             }
             ClientHandler receiverClient = clientHandlers.get(receiver);
             receiverClient.bufferedWriter.write(clientUsername + ": " + message);
             receiverClient.bufferedWriter.newLine();
             receiverClient.bufferedWriter.flush();
+            sendServerMessage("MESSAGE SENT");
         } catch (IOException e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
+            sendServerMessage("MESSAGE FAILED");
         }
     }
 
@@ -93,7 +96,12 @@ public class ClientHandler implements Runnable {
     }
 
     public void readAllClientMessages() {
-        /* While clientMessages (queue) is not empty, send messages to client */
+        /* If no messages in storage, send a read error */
+        if (clientMessages.get(clientUsername).isEmpty()) {
+            sendServerMessage("READ ERROR");
+            return;
+        }
+        /* Send stored messages until the queue is empty */
         while (!clientMessages.get(clientUsername).isEmpty()) {
             try {
                 bufferedWriter.write(clientMessages.get(clientUsername).poll());
@@ -143,17 +151,9 @@ public class ClientHandler implements Runnable {
 
                     default -> {
                         if (commandFromClient.matches("^COMPOSE\\s\\S+$")) {
-
                             String receiver = commandFromClient.substring(8);
                             String message = bufferedReader.readLine();
-
-                            if (receiver.equals(clientUsername)) {
-                                sendServerMessage("MESSAGE FAILED");
-                                break;
-                            }
-
                             sendClientMessage(receiver, message);
-                            sendServerMessage("MESSAGE SENT");
                         }
                     }
                 }

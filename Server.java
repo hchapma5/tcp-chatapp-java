@@ -41,9 +41,22 @@ class Server {
     }
 
     public static void main(String[] args) throws IOException {
-        ServerSocket serverSocket = new ServerSocket(1234);
-        Server server = new Server(serverSocket);
-        server.start();
+
+        if (args.length < 1) {
+            System.out.println("Usage: java Server <port>");
+            return; // exit if no port number provided
+        }
+
+        try {
+            int port = Integer.parseInt(args[0]);
+            ServerSocket serverSocket = new ServerSocket(port);
+            Server server = new Server(serverSocket);
+            server.start();
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid port number");
+            return; // exit if invalid port number
+        }
+
     }
 
 }
