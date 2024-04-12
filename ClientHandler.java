@@ -8,18 +8,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 
-/**
- * TODO:
- * 
- * 1. Check if this is working on turing.une.edu.au server
- * 2. Tidy up code and add comments for each function and any complicated code
- * 3. Further test the program for bugs and errors
- * 4. Go back over the assignment requirements and ensure everything is
- * implemented
- * 5. Implement bash scripts for running the server and client (given a port
- * number)
- */
-
 public class ClientHandler implements Runnable {
 
     public static HashMap<String, ClientHandler> clientHandlers = new HashMap<>();
@@ -45,16 +33,15 @@ public class ClientHandler implements Runnable {
     public void handleClientLogin() {
         try {
             String command = bufferedReader.readLine();
-            if (command.matches("^LOGIN\\s\\S+$")) {
+            if (command != null && command.matches("^LOGIN\\s\\S+$")) {
                 clientUsername = command.substring(6);
                 clientHandlers.put(clientUsername, this);
-                /* If client hasn't logged in before, store their messages */
-                if (clientMessages.get(clientUsername) == null) {
-                    clientMessages.put(clientUsername, new LinkedList<>());
-                }
+                /* If client hasn't logged in before, create message storage */
+                clientMessages.putIfAbsent(clientUsername, new LinkedList<>());
                 /* Return the amount of messages stored for the client */
                 sendServerMessage(Integer.toString(clientMessages.get(clientUsername).size()));
             } else {
+                sendServerMessage("INVALID LOGIN COMMAND");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         } catch (IOException e) {
@@ -138,25 +125,24 @@ public class ClientHandler implements Runnable {
             try {
                 commandFromClient = bufferedReader.readLine(); // blocking
 
-                switch (commandFromClient) {
-
-                    case "EXIT" -> {
-                        closeEverything(socket, bufferedReader, bufferedWriter);
-                        break;
-                    }
-
-                    case "READ" -> {
-                        readAllClientMessages();
-                    }
-
-                    default -> {
-                        if (commandFromClient.matches("^COMPOSE\\s\\S+$")) {
-                            String receiver = commandFromClient.substring(8);
-                            String message = bufferedReader.readLine();
-                            sendClientMessage(receiver, message);
-                        }
-                    }
+                if (commandFromClient.equals("EXIT")) {
+                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    break;
                 }
+
+                if (commandFromClient.equals("READ")) {
+                    readAllClientMessages();
+                }
+
+                if (commandFromClient.matches("^COMPOSE\\s\\S+$")) {
+                    String receiver = commandFromClient.substring(8);
+                    String message = bufferedReader.readLine();
+                    sendClientMessage(receiver, message);
+                }
+
+                // If invalid username (e.g. COMPOSE first last)
+                if (commandFromClient.startsWith("COMPOSE") && !commandFromClient.matches("^COMPOSE\\s\\S+$"))
+                    sendServerMessage("MESSAGE FAILED");
 
             } catch (IOException e) {
                 closeEverything(socket, bufferedReader, bufferedWriter);
