@@ -10,12 +10,24 @@ import java.util.LinkedList;
 import java.util.Queue;
 
 /**
- * TODO:
- * 1. If server needs to exit for anyreason, make sure you're prompting the user
- * that something has gone wrong.
- * 2. Add documentation for each function
+ * The `ClientHandler` class represents a handler for each client connected to
+ * the server.
+ * It implements the `Runnable` interface to allow concurrent handling of
+ * multiple clients.
+ * 
+ * The `ClientHandler` class is responsible for handling client login, sending
+ * and receiving messages,
+ * and managing client connections.
+ * 
+ * The class maintains a list of connected clients and a message storage for
+ * each client.
+ * 
+ * @param socket         The socket associated with the client connection.
+ * @param bufferedReader The `BufferedReader` used for reading client input.
+ * @param bufferedWriter The `BufferedWriter` used for writing server responses
+ *                       to the client.
+ * @param clientUsername The username of the client.
  */
-
 public class ClientHandler implements Runnable {
 
     public static ArrayList<ClientHandler> clients = new ArrayList<>();
@@ -33,6 +45,7 @@ public class ClientHandler implements Runnable {
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             handleClientLogin();
         } catch (IOException e) {
+            System.out.println("Error creating client handler: " + e.getMessage());
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
 
@@ -52,7 +65,8 @@ public class ClientHandler implements Runnable {
                 sendServerMessage("INVALID LOGIN COMMAND");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
+            sendServerMessage("Something went wrong with the server: Exiting...");
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
@@ -94,7 +108,7 @@ public class ClientHandler implements Runnable {
                 bufferedWriter.newLine();
                 bufferedWriter.flush();
             } catch (IOException e) {
-                sendServerMessage("READ ERROR");
+                sendServerMessage("Something went wrong with the server. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         }
@@ -121,30 +135,25 @@ public class ClientHandler implements Runnable {
     public void run() {
         String commandFromClient;
 
+        // Handle only valid commands from the client
         while (socket.isConnected()) {
             try {
-                commandFromClient = bufferedReader.readLine(); // blocking
-
+                commandFromClient = bufferedReader.readLine();
                 if (commandFromClient.equals("EXIT")) {
                     closeEverything(socket, bufferedReader, bufferedWriter);
                     break;
                 }
-
                 if (commandFromClient.equals("READ")) {
                     readAllClientMessages();
                 }
-
                 if (commandFromClient.matches("^COMPOSE\\s\\S+$")) {
                     String receiver = commandFromClient.substring(8);
                     String message = bufferedReader.readLine();
                     sendClientMessage(receiver, message);
                 }
 
-                // If invalid username (e.g. COMPOSE first last)
-                if (commandFromClient.startsWith("COMPOSE") && !commandFromClient.matches("^COMPOSE\\s\\S+$"))
-                    sendServerMessage("MESSAGE FAILED");
-
-            } catch (IOException e) {
+            } catch (Exception e) {
+                sendServerMessage("Something went wrong for the server. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
                 break; // exit the loop - client disconnected
             }
