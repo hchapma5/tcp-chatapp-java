@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ConnectException;
@@ -27,76 +28,88 @@ public class Client {
         }
     }
 
-    public void displayCommandProtocols() {
-        System.out.println("Command Protocols: \n");
-        System.out.println("COMPOSE <username> - Send a message to <username>");
-        System.out.println("READ - Read messages from the server");
-        System.out.println("EXIT - disconnect from server\n");
-    }
-
-    public void sendLoginCommand(String username) {
+    public void spendMessage(String message) {
         try {
-            bufferedWriter.write("LOGIN " + username);
+            bufferedWriter.write(message);
             bufferedWriter.newLine();
             bufferedWriter.flush();
-            displayCommandProtocols();
         } catch (Exception e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public void sendMessages() {
-        try (Scanner scanner = new Scanner(System.in)) {
+    public void login(String username) throws IOException {
+        spendMessage("LOGIN " + username);
+        String inboxCount = bufferedReader.readLine();
+        System.out.println("Welcome, " + username + "!");
+        System.out.println("You have " + inboxCount + " unread messages.");
+        displayCommandMenu();
+    }
 
-            // Store previous command to handle COMPOSE messages
-            String previousMessage = " ";
+    public void displayCommandMenu() {
+        System.out.println("\nChoose a command:");
+        System.out.println("(1): Send a message");
+        System.out.println("(2): Read messages");
+        System.out.println("(3): Disconnect\n");
+    }
 
-            while (!socket.isClosed()) {
-                String messageToSpend = scanner.nextLine();
-                // handle invalid commands
-                while (!isValidCommand(messageToSpend) && !previousMessage.matches("^COMPOSE\\s\\S+$")) {
-                    System.out.println("Invalid command. Try again.");
-                    messageToSpend = scanner.nextLine();
-                }
-                previousMessage = messageToSpend;
-                bufferedWriter.write(messageToSpend);
-                bufferedWriter.newLine();
-                bufferedWriter.flush();
+    public static boolean isValidCommand(String command) {
+        return new String("123").contains(command);
+    }
+
+    public void commandHandler(Scanner scanner) {
+        while (!socket.isClosed()) {
+            String command = scanner.nextLine();
+            // handle invalid commands
+            while (!isValidCommand(command)) {
+                System.out.println("Invalid command. Try again.");
+                displayCommandMenu();
+                command = scanner.nextLine();
             }
-        } catch (Exception e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
+            switch (command) {
+                case "1" -> {
+                    System.out.println("Enter the username of the recipient: ");
+                    String recipient = scanner.nextLine();
+                    // Make sure recipient is a valid username
+                    while (!recipient.matches("^[^\\s]+$")) {
+                        System.out.println("Invalid username: Try again with no spaces.");
+                        recipient = scanner.nextLine();
+                    }
+                    System.out.println("Enter your message: ");
+                    spendMessage("COMPOSE " + recipient);
+                    String messageToSpend = scanner.nextLine();
+                    spendMessage(messageToSpend);
+                }
+                case "2" -> {
+                    spendMessage("READ");
+                }
+                case "3" -> {
+                    spendMessage("EXIT");
+                }
+            }
         }
     }
 
-    public void listenForMessage() {
+    public void listen() {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                String messageFromChat;
+                String messageFromServer;
                 while (socket.isConnected()) {
                     try {
-                        messageFromChat = bufferedReader.readLine();
+                        messageFromServer = bufferedReader.readLine();
                         // If server sends null, close everything (EXIT command)
-                        if (messageFromChat == null)
+                        if (messageFromServer == null)
                             closeEverything(socket, bufferedReader, bufferedWriter);
                         // Read messages from server
-                        System.out.println(messageFromChat);
+                        System.out.println(messageFromServer);
+                        displayCommandMenu();
                     } catch (Exception e) {
                         closeEverything(socket, bufferedReader, bufferedWriter);
                     }
                 }
             }
         }).start();
-    }
-
-    public static boolean isValidCommand(String command) {
-        if (command.equals("EXIT"))
-            return true;
-        if (command.equals("READ"))
-            return true;
-        if (command.matches("^COMPOSE\\s\\S+$"))
-            return true;
-        return false;
     }
 
     public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
@@ -119,11 +132,13 @@ public class Client {
     public static void main(String[] args) {
         if (args.length < 2) {
             System.out.println("Usage: java Client <hostname> <port>");
-            return; // exit if no port number provided
+            return; // exit if no host or port provided
         }
-        String hostname = args[0];
-        int port = Integer.parseInt(args[1]);
-        try (Scanner scanner = new Scanner(System.in)) {
+        try {
+            String hostname = args[0];
+            int port = Integer.parseInt(args[1]);
+
+            Scanner scanner = new Scanner(System.in);
 
             // Handle client login
             System.out.print("Enter username: ");
@@ -138,18 +153,17 @@ public class Client {
                 username = scanner.nextLine();
             }
 
-            // Connect to server
+            // Connect to server and login
             Socket socket = new Socket(hostname, port);
             Client client = new Client(socket);
-            client.sendLoginCommand(username);
+            client.login(username);
 
             // Send & Receive messages
-            client.listenForMessage();
-            client.sendMessages();
+            client.listen();
+            client.commandHandler(scanner);
 
         } catch (NumberFormatException e) {
-            System.out.println("Invalid port number");
-            return; // exit if invalid port number
+            System.out.println("Invalid port number. Please try again.");
         } catch (ConnectException e) {
             System.out.println("Connection refused. Server may be down.");
         } catch (Exception e) {

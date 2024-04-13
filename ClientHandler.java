@@ -60,7 +60,10 @@ public class ClientHandler implements Runnable {
                 /* If client hasn't logged in before, create message storage */
                 clientMessages.putIfAbsent(clientUsername, new LinkedList<>());
                 /* Return the amount of messages stored for the client */
-                sendServerMessage(Integer.toString(clientMessages.get(clientUsername).size()));
+                String clientInboxCount = Integer.toString(clientMessages.get(clientUsername).size());
+                bufferedWriter.write(clientInboxCount);
+                bufferedWriter.newLine();
+                bufferedWriter.flush();
             } else {
                 sendServerMessage("INVALID LOGIN COMMAND");
                 closeEverything(socket, bufferedReader, bufferedWriter);
