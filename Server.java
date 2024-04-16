@@ -38,7 +38,7 @@ class Server {
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         if (args.length < 1) {
             System.out.println("Usage: java Server <port>");
             return; // exit if no port number provided
@@ -49,8 +49,10 @@ class Server {
             Server server = new Server(serverSocket);
             server.start();
         } catch (NumberFormatException e) {
-            System.out.println("Invalid port number");
+            System.out.println("Invalid port number. Please try again.");
             return;
+        } catch (IOException e) {
+            System.out.println("Failed to create server socket on port " + args[0] + ". Please try again.");
         }
 
     }

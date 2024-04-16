@@ -5,6 +5,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ConnectException;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Scanner;
 
 /**
@@ -47,10 +48,10 @@ public class Client {
     }
 
     public void displayCommandMenu() {
-        System.out.println("\nChoose a command:");
+        System.out.println("Choose a command:");
         System.out.println("(1): Send a message");
         System.out.println("(2): Read messages");
-        System.out.println("(3): Disconnect\n");
+        System.out.println("(3): Disconnect");
     }
 
     public static boolean isValidCommand(String command) {
@@ -138,24 +139,20 @@ public class Client {
             String hostname = args[0];
             int port = Integer.parseInt(args[1]);
 
-            Scanner scanner = new Scanner(System.in);
+            // Connect client to server
+            Socket socket = new Socket(hostname, port);
+            Client client = new Client(socket);
 
             // Handle client login
+            Scanner scanner = new Scanner(System.in);
             System.out.print("Enter username: ");
             String username = scanner.nextLine();
 
-            // Prompt client for valid username
+            // Make sure username is valid
             while (!username.matches("^[^\\s]+$")) {
-                // Exit if user types EXIT before logging in
-                if (username.equals("EXIT"))
-                    System.exit(0);
                 System.out.println("Invalid username: Try again with no spaces.");
                 username = scanner.nextLine();
             }
-
-            // Connect to server and login
-            Socket socket = new Socket(hostname, port);
-            Client client = new Client(socket);
             client.login(username);
 
             // Send & Receive messages
@@ -166,8 +163,10 @@ public class Client {
             System.out.println("Invalid port number. Please try again.");
         } catch (ConnectException e) {
             System.out.println("Connection refused. Server may be down.");
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (UnknownHostException e) {
+            System.out.println("Unknown host. Please try again.");
+        } catch (IOException e) {
+            System.out.println("Failed to connect to server. Please try again.");
         }
     }
 
