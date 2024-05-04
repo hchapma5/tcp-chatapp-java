@@ -1,5 +1,10 @@
 # Network Messaging System
 
+## UPDATE:
+
+- To compile : `javac -d bin -sourcepath src src/client/*.java src/server/*.java src/util/*.java`
+- To run : `java -cp bin src/folder/classFile`
+
 ## Overview
 
 This project implements a network messaging system enabling users to leave messages for others. It leverages TCP sockets to facilitate a server capable of storing and retrieving messages, alongside a client for user interaction.
@@ -20,7 +25,7 @@ This project implements a network messaging system enabling users to leave messa
 ```bash
 ./startServer.sh 1234
 ```
+
 ```bash
 ./startClient.sh localhost 1234
 ```
-
