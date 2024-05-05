@@ -8,7 +8,13 @@ import java.io.OutputStreamWriter;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.KeyPair;
+import java.util.Base64;
 import java.util.Scanner;
+
+import javax.crypto.SecretKey;
+
+import src.util.AESUtil;
 
 /**
  * The Client class represents a client in a TCP chat application.
@@ -20,6 +26,7 @@ public class Client {
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
+    private SecretKey secretKey;
 
     public Client(Socket socket) {
         try {
@@ -38,6 +45,21 @@ public class Client {
             bufferedWriter.flush();
         } catch (Exception e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+    }
+
+    public void DHkeyExchange() {
+        try {
+            KeyPair keyPair = AESUtil.generateDHKeyPair();
+            // Send public key to server
+            String publicKey = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+            spendMessage(publicKey); // Send public key
+            // Wait to receive public key from server
+            byte[] serverPublicKey = Base64.getDecoder().decode(bufferedReader.readLine()); // convert String to byte[]
+            byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(), serverPublicKey);
+            secretKey = AESUtil.deriveAESKey(sharedSecret);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

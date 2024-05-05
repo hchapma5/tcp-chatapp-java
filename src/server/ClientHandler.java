@@ -6,10 +6,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.security.KeyPair;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
+
+import javax.crypto.SecretKey;
+
+import src.util.AESUtil;
 
 /**
  * The `ClientHandler` class represents a handler for each client connected to
@@ -28,23 +34,25 @@ import java.util.Queue;
  * @param bufferedReader The `BufferedReader` used for reading client input.
  * @param bufferedWriter The `BufferedWriter` used for writing server responses
  *                       to the client.
- * @param clientUsername The username of the client.
  */
 public class ClientHandler implements Runnable {
 
     public static ArrayList<ClientHandler> clients = new ArrayList<>();
+    public static ArrayList<User> users = new ArrayList<>();
     public static HashMap<String, Queue<String>> clientMessages = new HashMap<>();
 
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
-    private String clientUsername;
+    private User user;
+    private SecretKey secretKey;
 
     public ClientHandler(Socket socket) {
         try {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            DHkeyExchange();
             handleClientLogin();
         } catch (IOException e) {
             System.out.println("Error creating client handler: " + e.getMessage());
@@ -53,16 +61,62 @@ public class ClientHandler implements Runnable {
 
     }
 
+    public void DHkeyExchange() {
+        try {
+            KeyPair keyPair = AESUtil.generateDHKeyPair();
+            // Receive public key from client
+            byte[] clientPublicKey = Base64.getDecoder().decode(bufferedReader.readLine());
+            // Send public key to client
+            bufferedWriter.write(Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+            // Generate shared secret
+            byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(), clientPublicKey);
+            secretKey = AESUtil.deriveAESKey(sharedSecret);
+        } catch (Exception e) {
+            sendServerMessage("Failed to establish shared secret with client");
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+    }
+
     public void handleClientLogin() {
         try {
             String command = bufferedReader.readLine();
-            if (command != null && command.matches("^LOGIN\\s\\S+$")) {
-                clientUsername = command.substring(6);
-                clients.add(this);
-                /* If client hasn't logged in before, create message storage */
-                clientMessages.putIfAbsent(clientUsername, new LinkedList<>());
+            // if command matches "LOGIN <username>:<password>
+            if (command != null && command.matches("^LOGIN\\s\\S+:\\S+$")) {
+                String username = command.substring(6).split(":")[0];
+                String password = command.substring(6).split(":")[1];
+                clients.add(this); // add this connection
+                // Find user in users by username
+                user = users.stream().filter(u -> u.username.equals(username)).findFirst().orElse(null);
+                // If user not found, send invalid login message
+                if (user == null) {
+                    sendServerMessage("Invalid username, please try again.");
+                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    return;
+                }
+                if (!user.checkPassword(password)) {
+                    sendServerMessage("Invalid password, please try again.");
+                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    return;
+                }
+                // User should be logged in!
                 /* Return the amount of messages stored for the client */
-                String clientInboxCount = Integer.toString(clientMessages.get(clientUsername).size());
+                String clientInboxCount = Integer.toString(clientMessages.get(user.username).size());
+                bufferedWriter.write(clientInboxCount);
+                bufferedWriter.newLine();
+                bufferedWriter.flush();
+                // else if command matches "REGISTER <username>:<password>"
+            } else if (command != null && command.matches("^REGISTER\\s\\S+:\\S+$")) {
+                String username = command.substring(9).split(":")[0];
+                String password = command.substring(9).split(":")[1];
+                clients.add(this);
+                user = new User(username, password);
+                users.add(user);
+                /* If client hasn't logged in before, create message storage */
+                clientMessages.putIfAbsent(user.username, new LinkedList<>());
+                /* Return the amount of messages stored for the client */
+                String clientInboxCount = Integer.toString(clientMessages.get(user.username).size());
                 bufferedWriter.write(clientInboxCount);
                 bufferedWriter.newLine();
                 bufferedWriter.flush();

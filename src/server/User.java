@@ -1,19 +1,16 @@
 package src.server;
 
-import java.util.UUID;
 import src.util.PasswordUtil;
 
 /**
  * User class
  * 
  * Represents a User with a username and password
- * The User is assigned a random UUID as an ID
  * The password is hashed using SHA-256 and a random salt
  * 
  */
 public class User {
 
-    public String id;
     public String username;
     private String passwordHash;
 
@@ -28,7 +25,6 @@ public class User {
             throw new IllegalArgumentException("Invalid username or password");
         }
         this.username = username;
-        this.id = UUID.randomUUID().toString();
         this.passwordHash = PasswordUtil.hashPassword(password);
     }
 
@@ -74,15 +70,6 @@ public class User {
      */
     public boolean checkPassword(String password) {
         return PasswordUtil.comparePassword(password, this.passwordHash);
-    }
-
-    // Main method for testing the User class and hashed password
-    public static void main(String[] args) {
-        User user = new User("testuser", "Password123!");
-        System.out.println("User ID: " + user.id);
-        System.out.println("Username: " + user.username);
-        System.out.println("Password hash: " + user.passwordHash);
-        System.out.println("Password check: " + user.checkPassword("Password123!"));
     }
 
 }
