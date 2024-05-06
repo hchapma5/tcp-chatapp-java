@@ -7,14 +7,14 @@ if [ "$#" -ne 1 ]; then
 fi
 
 # Compile the Java files
-javac Server.java ClientHandler.java
+javac -d bin -sourcepath src src/server/*.java src/util/*.java
 if [ $? -ne 0 ]; then
   echo "Error: Failed to compile the Java files."
   exit 1
 fi
 
 # Start the server
-java Server "$1"
+java -cp bin src/server/Server "$1"
 if [ $? -ne 0 ]; then
   echo "Error: Failed to start the server on port $1. This port may be already in use."
   exit 1

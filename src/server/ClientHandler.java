@@ -45,15 +45,17 @@ public class ClientHandler implements Runnable {
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
     private User user;
-    private SecretKey secretKey;
+    // private SecretKey secretKey;
 
     public ClientHandler(Socket socket) {
         try {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            DHkeyExchange();
-            handleClientLogin();
+            // DHkeyExchange();
+            while (user == null) {
+                handleAuthentication();
+            }
         } catch (IOException e) {
             System.out.println("Error creating client handler: " + e.getMessage());
             closeEverything(socket, bufferedReader, bufferedWriter);
@@ -61,28 +63,29 @@ public class ClientHandler implements Runnable {
 
     }
 
-    public void DHkeyExchange() {
-        try {
-            KeyPair keyPair = AESUtil.generateDHKeyPair();
-            // Receive public key from client
-            byte[] clientPublicKey = Base64.getDecoder().decode(bufferedReader.readLine());
-            // Send public key to client
-            bufferedWriter.write(Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
-            bufferedWriter.newLine();
-            bufferedWriter.flush();
-            // Generate shared secret
-            byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(), clientPublicKey);
-            secretKey = AESUtil.deriveAESKey(sharedSecret);
-        } catch (Exception e) {
-            sendServerMessage("Failed to establish shared secret with client");
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
-    }
+    // public void DHkeyExchange() {
+    // try {
+    // KeyPair keyPair = AESUtil.generateDHKeyPair();
+    // // Receive public key from client
+    // byte[] clientPublicKey =
+    // Base64.getDecoder().decode(bufferedReader.readLine());
+    // // Send public key to client
+    // bufferedWriter.write(Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+    // bufferedWriter.newLine();
+    // bufferedWriter.flush();
+    // // Generate shared secret
+    // byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
+    // clientPublicKey);
+    // secretKey = AESUtil.deriveAESKey(sharedSecret);
+    // } catch (Exception e) {
+    // sendServerMessage("Failed to establish shared secret with client");
+    // closeEverything(socket, bufferedReader, bufferedWriter);
+    // }
+    // }
 
-    public void handleClientLogin() {
+    public void handleAuthentication() {
         try {
             String command = bufferedReader.readLine();
-            // if command matches "LOGIN <username>:<password>
             if (command != null && command.matches("^LOGIN\\s\\S+:\\S+$")) {
                 String username = command.substring(6).split(":")[0];
                 String password = command.substring(6).split(":")[1];
@@ -91,41 +94,37 @@ public class ClientHandler implements Runnable {
                 user = users.stream().filter(u -> u.username.equals(username)).findFirst().orElse(null);
                 // If user not found, send invalid login message
                 if (user == null) {
-                    sendServerMessage("Invalid username, please try again.");
-                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    sendServerMessage(MessageType.INFO, "Invalid username, please try again.");
                     return;
                 }
                 if (!user.checkPassword(password)) {
-                    sendServerMessage("Invalid password, please try again.");
-                    closeEverything(socket, bufferedReader, bufferedWriter);
+                    sendServerMessage(MessageType.INFO, "Invalid password, please try again.");
                     return;
                 }
-                // User should be logged in!
-                /* Return the amount of messages stored for the client */
-                String clientInboxCount = Integer.toString(clientMessages.get(user.username).size());
-                bufferedWriter.write(clientInboxCount);
-                bufferedWriter.newLine();
-                bufferedWriter.flush();
-                // else if command matches "REGISTER <username>:<password>"
+                // User should be authenticated at this point
             } else if (command != null && command.matches("^REGISTER\\s\\S+:\\S+$")) {
                 String username = command.substring(9).split(":")[0];
                 String password = command.substring(9).split(":")[1];
-                clients.add(this);
+                System.out.println("Registering user: " + username + " with password: " + password);
+                if (users.stream().anyMatch(u -> u.username.equals(username))) {
+                    sendServerMessage(MessageType.INFO, "Username already exists, please try again.");
+                    return;
+                }
                 user = new User(username, password);
+                System.out.println(
+                        "Successfully created User: " + user.username);
                 users.add(user);
-                /* If client hasn't logged in before, create message storage */
+                clients.add(this);
+                /* Create a message storage for the new user */
                 clientMessages.putIfAbsent(user.username, new LinkedList<>());
-                /* Return the amount of messages stored for the client */
-                String clientInboxCount = Integer.toString(clientMessages.get(user.username).size());
-                bufferedWriter.write(clientInboxCount);
-                bufferedWriter.newLine();
-                bufferedWriter.flush();
             } else {
-                sendServerMessage("INVALID LOGIN COMMAND");
+                sendServerMessage(MessageType.ERROR, "Invalid command. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
+            // If successful login or registration, send <username:inboxcount>
+            sendServerMessage(MessageType.SUCCESS, user.username + ":" + clientMessages.get(user.username).size());
         } catch (Exception e) {
-            sendServerMessage("Something went wrong with the server: Exiting...");
+            sendServerMessage(MessageType.ERROR, "Something went wrong with the server: Exiting...");
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
@@ -136,17 +135,17 @@ public class ClientHandler implements Runnable {
             if (clientMessages.get(receiver) == null)
                 clientMessages.put(receiver, new LinkedList<>());
 
-            clientMessages.get(receiver).add(clientUsername + ": " + message);
-            sendServerMessage("MESSAGE SENT");
+            clientMessages.get(receiver).add(user.username + ": " + message);
+            sendServerMessage(MessageType.SUCCESS, "MESSAGE SENT");
             return;
         } catch (Exception e) {
-            sendServerMessage("MESSAGE FAILED");
+            sendServerMessage(MessageType.INFO, "MESSAGE FAILED");
         }
     }
 
-    public void sendServerMessage(String message) {
+    public void sendServerMessage(MessageType msgCode, String message) {
         try {
-            bufferedWriter.write("Server: " + message);
+            bufferedWriter.write(msgCode.prefix + message);
             bufferedWriter.newLine();
             bufferedWriter.flush();
         } catch (IOException e) {
@@ -156,18 +155,18 @@ public class ClientHandler implements Runnable {
 
     public void readAllClientMessages() {
         /* If no messages in storage, send a read error */
-        if (clientMessages.get(clientUsername).isEmpty()) {
-            sendServerMessage("READ ERROR");
+        if (clientMessages.get(user.username).isEmpty()) {
+            sendServerMessage(MessageType.INFO, "READ ERROR");
             return;
         }
         /* Send stored messages until the queue is empty */
-        while (!clientMessages.get(clientUsername).isEmpty()) {
+        while (!clientMessages.get(user.username).isEmpty()) {
             try {
-                bufferedWriter.write(clientMessages.get(clientUsername).poll());
+                bufferedWriter.write(clientMessages.get(user.username).poll());
                 bufferedWriter.newLine();
                 bufferedWriter.flush();
             } catch (IOException e) {
-                sendServerMessage("Something went wrong with the server. Exiting...");
+                sendServerMessage(MessageType.ERROR, "Something went wrong with the server. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         }
@@ -212,7 +211,7 @@ public class ClientHandler implements Runnable {
                 }
 
             } catch (Exception e) {
-                sendServerMessage("Something went wrong for the server. Exiting...");
+                sendServerMessage(MessageType.ERROR, "Something went wrong for the server. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
                 break; // exit the loop - client disconnected
             }

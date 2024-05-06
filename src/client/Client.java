@@ -26,7 +26,7 @@ public class Client {
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
-    private SecretKey secretKey;
+    // private SecretKey secretKey;
 
     public Client(Socket socket) {
         try {
@@ -38,7 +38,7 @@ public class Client {
         }
     }
 
-    public void spendMessage(String message) {
+    public void sendMessage(String message) {
         try {
             bufferedWriter.write(message);
             bufferedWriter.newLine();
@@ -48,28 +48,24 @@ public class Client {
         }
     }
 
-    public void DHkeyExchange() {
-        try {
-            KeyPair keyPair = AESUtil.generateDHKeyPair();
-            // Send public key to server
-            String publicKey = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
-            spendMessage(publicKey); // Send public key
-            // Wait to receive public key from server
-            byte[] serverPublicKey = Base64.getDecoder().decode(bufferedReader.readLine()); // convert String to byte[]
-            byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(), serverPublicKey);
-            secretKey = AESUtil.deriveAESKey(sharedSecret);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void login(String username) throws IOException {
-        spendMessage("LOGIN " + username);
-        String inboxCount = bufferedReader.readLine();
-        System.out.println("Welcome, " + username + "!");
-        System.out.println("You have " + inboxCount + " unread messages.");
-        displayCommandMenu();
-    }
+    // public void DHkeyExchange() {
+    // try {
+    // KeyPair keyPair = AESUtil.generateDHKeyPair();
+    // // Send public key to server
+    // String publicKey =
+    // Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+    // spendMessage(publicKey); // Send public key
+    // // Wait to receive public key from server
+    // byte[] serverPublicKey =
+    // Base64.getDecoder().decode(bufferedReader.readLine()); // convert String to
+    // byte[]
+    // byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
+    // serverPublicKey);
+    // secretKey = AESUtil.deriveAESKey(sharedSecret);
+    // } catch (Exception e) {
+    // e.printStackTrace();
+    // }
+    // }
 
     public void displayCommandMenu() {
         System.out.println("Choose a command:");
@@ -101,15 +97,15 @@ public class Client {
                         recipient = scanner.nextLine();
                     }
                     System.out.println("Enter your message: ");
-                    spendMessage("COMPOSE " + recipient);
+                    sendMessage("COMPOSE " + recipient);
                     String messageToSpend = scanner.nextLine();
-                    spendMessage(messageToSpend);
+                    sendMessage(messageToSpend);
                 }
                 case "2" -> {
-                    spendMessage("READ");
+                    sendMessage("READ");
                 }
                 case "3" -> {
-                    spendMessage("EXIT");
+                    sendMessage("EXIT");
                 }
             }
         }
@@ -154,6 +150,68 @@ public class Client {
         }
     }
 
+    public void displayAuthCommands() {
+        System.out.println("Choose a command:");
+        System.out.println("(1): Login");
+        System.out.println("(2): Register");
+        System.out.println("(3): Exit");
+    }
+
+    private boolean isValidPassword(String password) {
+        String regex = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*-_+=/])(?=\\S+$).{8,}$";
+        return (password == null) ? false : password.matches(regex);
+    }
+
+    private boolean isValidUsername(String username) {
+        String regex = "^[a-zA-Z0-9]{4,16}$";
+        return (username == null) ? false : username.matches(regex);
+    }
+
+    public void handleAuthentication(Scanner scanner, String command) throws IOException {
+        switch (command) {
+            case "1" -> {
+                System.out.print("Enter username: ");
+                String username = scanner.nextLine();
+                System.out.print("Enter password: ");
+                String password = scanner.nextLine();
+                sendMessage("LOGIN " + username + ":" + password);
+            }
+            case "2" -> {
+                System.out.print("Enter username: ");
+                String username = scanner.nextLine();
+                System.out.print("Enter password: ");
+                String password = scanner.nextLine();
+                // Validate username and password
+                while (!isValidUsername(username)) {
+                    System.out.println("Invalid username. Try again.");
+                    System.out.print("Enter username: ");
+                    username = scanner.nextLine();
+                }
+                while (!isValidPassword(password)) {
+                    System.out.println("Invalid password. Try again.");
+                    System.out.print("Enter password: ");
+                    password = scanner.nextLine();
+                }
+                sendMessage("REGISTER " + username + ":" + password);
+            }
+            case "3" -> {
+                sendMessage("EXIT");
+                closeEverything(socket, bufferedReader, bufferedWriter);
+            }
+        }
+        String response = bufferedReader.readLine();
+        if (response.startsWith("SERVER")) {
+            System.out.println(response);
+            handleAuthentication(scanner, command);
+            return;
+        }
+        String username = response.split(":")[0];
+        String inboxCount = response.split(":")[1];
+        System.out.println("Welcome, " + username + "!");
+        System.out.println("You have " + inboxCount + " unread messages.");
+        displayCommandMenu();
+    }
+
     public static void main(String[] args) {
         if (args.length < 2) {
             System.out.println("Usage: java Client <hostname> <port>");
@@ -167,17 +225,17 @@ public class Client {
             Socket socket = new Socket(hostname, port);
             Client client = new Client(socket);
 
-            // Handle client login
+            // Handle client authentication
             Scanner scanner = new Scanner(System.in);
-            System.out.print("Enter username: ");
-            String username = scanner.nextLine();
-
-            // Make sure username is valid
-            while (!username.matches("^[^\\s]+$")) {
-                System.out.println("Invalid username: Try again with no spaces.");
-                username = scanner.nextLine();
+            client.displayAuthCommands();
+            String command = scanner.nextLine();
+            // handle invalid commands
+            while (!isValidCommand(command)) {
+                System.out.println("Invalid command. Try again.");
+                client.displayAuthCommands();
+                command = scanner.nextLine();
             }
-            client.login(username);
+            client.handleAuthentication(scanner, command);
 
             // Send & Receive messages
             client.listen();
