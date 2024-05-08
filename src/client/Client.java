@@ -8,10 +8,16 @@ import java.io.OutputStreamWriter;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
 import java.security.KeyPair;
+import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Scanner;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
 import src.util.AESUtil;
@@ -26,7 +32,7 @@ public class Client {
     private Socket socket;
     private BufferedReader bufferedReader;
     private BufferedWriter bufferedWriter;
-    // private SecretKey secretKey;
+    private SecretKey secretKey;
 
     public Client(Socket socket) {
         try {
@@ -40,32 +46,45 @@ public class Client {
 
     public void sendMessage(String message) {
         try {
-            bufferedWriter.write(message);
+            String ciphertext = AESUtil.encrypt(message, secretKey);
+            bufferedWriter.write(ciphertext);
             bufferedWriter.newLine();
             bufferedWriter.flush();
         } catch (Exception e) {
+            // TODO: handle exception
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    // public void DHkeyExchange() {
-    // try {
-    // KeyPair keyPair = AESUtil.generateDHKeyPair();
-    // // Send public key to server
-    // String publicKey =
-    // Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
-    // spendMessage(publicKey); // Send public key
-    // // Wait to receive public key from server
-    // byte[] serverPublicKey =
-    // Base64.getDecoder().decode(bufferedReader.readLine()); // convert String to
-    // byte[]
-    // byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
-    // serverPublicKey);
-    // secretKey = AESUtil.deriveAESKey(sharedSecret);
-    // } catch (Exception e) {
-    // e.printStackTrace();
-    // }
-    // }
+    public String readEncryptedMessage() {
+        try {
+            return AESUtil.decrypt(bufferedReader.readLine(), secretKey);
+        } catch (Exception e) {
+            // TODO: handle exception
+            closeEverything(socket, bufferedReader, bufferedWriter);
+            return null;
+        }
+
+    }
+
+    public void DiffieHellmanKeyExchange() {
+        try {
+            KeyPair keyPair = AESUtil.generateDHKeyPair();
+            // Send public key to server
+            String publicKey = Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
+            bufferedWriter.write(publicKey);
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+            // Wait to receive public key from server
+            byte[] serverPublicKey = Base64.getDecoder().decode(bufferedReader.readLine()); // convert String to
+            byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
+                    serverPublicKey);
+            this.secretKey = AESUtil.deriveAESKey(sharedSecret);
+        } catch (Exception e) {
+            // TODO: handle exception
+            e.printStackTrace();
+        }
+    }
 
     public void displayCommandMenu() {
         System.out.println("Choose a command:");
@@ -118,7 +137,7 @@ public class Client {
                 String messageFromServer;
                 while (socket.isConnected()) {
                     try {
-                        messageFromServer = bufferedReader.readLine();
+                        messageFromServer = readEncryptedMessage();
                         // If server sends null, close everything (EXIT command)
                         if (messageFromServer == null)
                             closeEverything(socket, bufferedReader, bufferedWriter);
@@ -126,6 +145,7 @@ public class Client {
                         System.out.println(messageFromServer);
                         displayCommandMenu();
                     } catch (Exception e) {
+                        // TODO: handle exception
                         closeEverything(socket, bufferedReader, bufferedWriter);
                     }
                 }
@@ -167,7 +187,9 @@ public class Client {
         return (username == null) ? false : username.matches(regex);
     }
 
-    public void handleAuthentication(Scanner scanner, String command) throws IOException {
+    public void handleAuthentication(Scanner scanner, String command)
+            throws IOException, InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException,
+            InvalidAlgorithmParameterException, BadPaddingException, IllegalBlockSizeException {
         switch (command) {
             case "1" -> {
                 System.out.print("Enter username: ");
@@ -179,14 +201,15 @@ public class Client {
             case "2" -> {
                 System.out.print("Enter username: ");
                 String username = scanner.nextLine();
-                System.out.print("Enter password: ");
-                String password = scanner.nextLine();
-                // Validate username and password
+                // Validate username
                 while (!isValidUsername(username)) {
                     System.out.println("Invalid username. Try again.");
                     System.out.print("Enter username: ");
                     username = scanner.nextLine();
                 }
+                System.out.print("Enter password: ");
+                String password = scanner.nextLine();
+                // Validate password
                 while (!isValidPassword(password)) {
                     System.out.println("Invalid password. Try again.");
                     System.out.print("Enter password: ");
@@ -199,7 +222,7 @@ public class Client {
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         }
-        String response = bufferedReader.readLine();
+        String response = readEncryptedMessage();
         if (response.startsWith("SERVER")) {
             System.out.println(response);
             handleAuthentication(scanner, command);
@@ -225,10 +248,14 @@ public class Client {
             Socket socket = new Socket(hostname, port);
             Client client = new Client(socket);
 
+            // Perform Diffie-Hellman key exchange
+            client.DiffieHellmanKeyExchange();
+
             // Handle client authentication
             Scanner scanner = new Scanner(System.in);
             client.displayAuthCommands();
             String command = scanner.nextLine();
+
             // handle invalid commands
             while (!isValidCommand(command)) {
                 System.out.println("Invalid command. Try again.");
@@ -249,6 +276,8 @@ public class Client {
             System.out.println("Unknown host. Please try again.");
         } catch (IOException e) {
             System.out.println("Failed to connect to server. Please try again.");
+        } catch (Exception e) {
+            System.out.println("An error occurred during encryption. Please try again.");
         }
     }
 
