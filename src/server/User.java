@@ -13,6 +13,7 @@ public class User {
 
     public String username;
     private String passwordHash;
+    private boolean loggedIn;
 
     /**
      * Create a new user with a username and password
@@ -26,6 +27,7 @@ public class User {
         }
         this.username = username;
         this.passwordHash = PasswordUtil.hashPassword(password);
+        this.loggedIn = true;
     }
 
     /**
@@ -70,6 +72,22 @@ public class User {
      */
     public boolean checkPassword(String password) {
         return PasswordUtil.comparePassword(password, this.passwordHash);
+    }
+
+    /**
+     * Check if the user is logged in
+     * 
+     * @return boolean
+     */
+    public boolean isLoggedIn() {
+        return loggedIn;
+    }
+
+    /**
+     * Log the user out
+     */
+    public void logout() {
+        loggedIn = false;
     }
 
 }

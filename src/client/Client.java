@@ -8,16 +8,10 @@ import java.io.OutputStreamWriter;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
+import java.security.GeneralSecurityException;
 import java.security.KeyPair;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Scanner;
-
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
 import src.util.AESUtil;
@@ -39,32 +33,41 @@ public class Client {
             this.socket = socket;
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        } catch (Exception e) {
+        } catch (IOException e) {
+            System.err.println("Error creating client: " + e.getMessage());
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public void sendMessage(String message) {
+    public void sendEncryptedMessage(String message) {
         try {
+            // Check connection before sending message
+            if (socket.isClosed()) {
+                System.err.println("Connection to server is closed. Exiting...");
+                closeEverything(socket, bufferedReader, bufferedWriter);
+            }
             String ciphertext = AESUtil.encrypt(message, secretKey);
             bufferedWriter.write(ciphertext);
             bufferedWriter.newLine();
             bufferedWriter.flush();
-        } catch (Exception e) {
-            // TODO: handle exception
+        } catch (IOException e) {
+            System.err.println("An error occured sending message to server");
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
     public String readEncryptedMessage() {
         try {
-            return AESUtil.decrypt(bufferedReader.readLine(), secretKey);
-        } catch (Exception e) {
-            // TODO: handle exception
+            String message = AESUtil.decrypt(bufferedReader.readLine(), secretKey);
+            if (message == null)
+                return null;
+            // If server sends null, close everything (EXIT command)
+            return message;
+        } catch (IOException e) {
+            System.err.println("An error occured decrypting server message");
             closeEverything(socket, bufferedReader, bufferedWriter);
             return null;
         }
-
     }
 
     public void DiffieHellmanKeyExchange() {
@@ -80,9 +83,9 @@ public class Client {
             byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
                     serverPublicKey);
             this.secretKey = AESUtil.deriveAESKey(sharedSecret);
-        } catch (Exception e) {
-            // TODO: handle exception
-            e.printStackTrace();
+        } catch (IOException | GeneralSecurityException e) {
+            System.err.println("An error occured during key exchange. Exiting...");
+            closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
@@ -116,15 +119,15 @@ public class Client {
                         recipient = scanner.nextLine();
                     }
                     System.out.println("Enter your message: ");
-                    sendMessage("COMPOSE " + recipient);
+                    sendEncryptedMessage("COMPOSE " + recipient);
                     String messageToSpend = scanner.nextLine();
-                    sendMessage(messageToSpend);
+                    sendEncryptedMessage(messageToSpend);
                 }
                 case "2" -> {
-                    sendMessage("READ");
+                    sendEncryptedMessage("READ");
                 }
                 case "3" -> {
-                    sendMessage("EXIT");
+                    sendEncryptedMessage("EXIT");
                 }
             }
         }
@@ -145,7 +148,6 @@ public class Client {
                         System.out.println(messageFromServer);
                         displayCommandMenu();
                     } catch (Exception e) {
-                        // TODO: handle exception
                         closeEverything(socket, bufferedReader, bufferedWriter);
                     }
                 }
@@ -164,7 +166,7 @@ public class Client {
             if (socket != null) {
                 socket.close();
             }
-            System.exit(0); // exit the program
+            System.exit(0);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -187,18 +189,16 @@ public class Client {
         return (username == null) ? false : username.matches(regex);
     }
 
-    public void handleAuthentication(Scanner scanner, String command)
-            throws IOException, InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException,
-            InvalidAlgorithmParameterException, BadPaddingException, IllegalBlockSizeException {
+    public void handleAuthentication(Scanner scanner, String command) {
         switch (command) {
-            case "1" -> {
+            case "1" -> { // LOGIN
                 System.out.print("Enter username: ");
                 String username = scanner.nextLine();
                 System.out.print("Enter password: ");
                 String password = scanner.nextLine();
-                sendMessage("LOGIN " + username + ":" + password);
+                sendEncryptedMessage("LOGIN " + username + ":" + password);
             }
-            case "2" -> {
+            case "2" -> { // REGISTER
                 System.out.print("Enter username: ");
                 String username = scanner.nextLine();
                 // Validate username
@@ -215,10 +215,10 @@ public class Client {
                     System.out.print("Enter password: ");
                     password = scanner.nextLine();
                 }
-                sendMessage("REGISTER " + username + ":" + password);
+                sendEncryptedMessage("REGISTER " + username + ":" + password);
             }
-            case "3" -> {
-                sendMessage("EXIT");
+            case "3" -> { // EXIT
+                sendEncryptedMessage("EXIT");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
         }

@@ -32,7 +32,7 @@ public class AESUtil {
      */
     public static KeyPair generateDHKeyPair() throws NoSuchAlgorithmException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(DH_ALGORITHM);
-        keyPairGenerator.initialize(2048);
+        keyPairGenerator.initialize(2048); // 2048-bit key size
         return keyPairGenerator.generateKeyPair();
     }
 
@@ -87,17 +87,30 @@ public class AESUtil {
      */
     public static String encrypt(String plaintext, SecretKey key) {
         try {
+            // Convert plaintext string to bytes
             byte[] plaintextBytes = plaintext.getBytes();
+
+            // Generate a new IV for each encryption
             byte[] iv = generateIV();
+
+            // Get a Cipher instance for AES-GCM without padding.
             Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
+
+            // Create a specification for the GCM parameters
             GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+
+            // Init the cipher with the key and IV
             cipher.init(Cipher.ENCRYPT_MODE, key, gcmParameterSpec);
 
+            // Encrypt the plaintext and compute an authentication tag
             byte[] encrypted = cipher.doFinal(plaintextBytes);
+
+            // Combine IV and encrypted data
             byte[] encryptedWithIv = new byte[iv.length + encrypted.length];
             System.arraycopy(iv, 0, encryptedWithIv, 0, iv.length);
             System.arraycopy(encrypted, 0, encryptedWithIv, iv.length, encrypted.length);
 
+            // Encode the IV and encrypted data with authentication tag as a Base64 string
             return Base64.getEncoder().encodeToString(encryptedWithIv);
         } catch (GeneralSecurityException e) {
             System.out.println("Error encrypting data: " + e.getMessage());
@@ -116,15 +129,28 @@ public class AESUtil {
      */
     public static String decrypt(String ciphertextWithIv, SecretKey key) {
         try {
+            // Decode the Base64 string to get the IV and encrypted data
             byte[] decodedInput = Base64.getDecoder().decode(ciphertextWithIv);
+
+            // Extract the IV from the beginning of the decoded array
             byte[] iv = Arrays.copyOfRange(decodedInput, 0, IV_SIZE);
+
+            // Extract the ciphertext
             byte[] ciphertext = Arrays.copyOfRange(decodedInput, IV_SIZE, decodedInput.length);
 
+            // Get a Cipher instance for AES-GCM without padding.
             Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
+
+            // Create a specification for the GCM parameters
             GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+
+            // Init the cipher with the key and IV
             cipher.init(Cipher.DECRYPT_MODE, key, gcmParameterSpec);
 
+            // decrypt and verify the tag (throws AEADBadTagException)
             byte[] decryptedBytes = cipher.doFinal(ciphertext);
+
+            // Convert the decrypted bytes to a string
             return new String(decryptedBytes);
         } catch (GeneralSecurityException e) {
             System.out.println("Error decrypting data: " + e.getMessage());

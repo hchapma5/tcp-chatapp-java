@@ -6,21 +6,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
+import java.security.GeneralSecurityException;
 import java.security.KeyPair;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
-
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
+import java.sql.Timestamp;
 import javax.crypto.SecretKey;
-
 import src.util.AESUtil;
 
 /**
@@ -78,9 +72,9 @@ public class ClientHandler implements Runnable {
             byte[] sharedSecret = AESUtil.generateSharedSecret(keyPair.getPrivate(),
                     clientPublicKey);
             this.secretKey = AESUtil.deriveAESKey(sharedSecret);
-        } catch (Exception e) {
-            // TODO: look into this
-            e.printStackTrace();
+        } catch (IOException | GeneralSecurityException e) {
+            sendServerMessage(MessageType.ERROR, "An error occured during key exchange. Exiting...");
+            closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
@@ -104,84 +98,94 @@ public class ClientHandler implements Runnable {
                     return;
                 }
                 // Check if User already logged in
-                if (clients.stream().anyMatch(c -> c.user.username.equals(username))) {
+                if (clients.stream().anyMatch(c -> c.user.username.equals(username) && c.user.isLoggedIn())) {
                     sendServerMessage(MessageType.INFO, "User already logged in, please try again.");
                     return;
                 }
+                System.out.println("Successfully logged in user: " + user.username);
             } else if (command != null && command.matches("^REGISTER\\s\\S+:\\S+$")) {
                 String username = command.substring(9).split(":")[0];
                 String password = command.substring(9).split(":")[1];
-                System.out.println("Registering user: " + username + " with password: " + password);
                 if (users.stream().anyMatch(u -> u.username.equals(username))) {
                     sendServerMessage(MessageType.INFO, "Username already exists, please try again.");
                     return;
                 }
                 this.user = new User(username, password);
-                System.out.println(
-                        "Successfully created User: " + user.username);
-                users.add(user);
                 clients.add(this);
+                users.add(this.user);
                 /* Create a message storage for the new user */
                 clientMessages.putIfAbsent(user.username, new LinkedList<>());
+                System.out.println(
+                        "Successfully registered user: " + user.username);
             } else {
                 sendServerMessage(MessageType.ERROR, "Invalid command. Exiting...");
                 closeEverything(socket, bufferedReader, bufferedWriter);
             }
             // If successful login or registration, send <username:inboxcount>
             sendServerMessage(MessageType.SUCCESS, user.username + ":" + clientMessages.get(user.username).size());
-        } catch (Exception e) {
-            // TODO: look into this
+        } catch (Exception e) { // User disconnected
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public String readEncryptedMessage() throws InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException,
-            InvalidAlgorithmParameterException, BadPaddingException, IllegalBlockSizeException, IOException {
-        return AESUtil.decrypt(bufferedReader.readLine(), secretKey);
-    }
-
-    public void sendClientMessage(String receiver, String message)
-            throws InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException,
-            InvalidAlgorithmParameterException, BadPaddingException, IllegalBlockSizeException, IOException {
-        try {
-            /* If the receiver hasn't logged in before, create entry in message bank */
-            if (clientMessages.get(receiver) == null)
-                clientMessages.put(receiver, new LinkedList<>());
-
-            clientMessages.get(receiver).add(user.username + ": " + message);
-            sendServerMessage(MessageType.SUCCESS, "MESSAGE SENT");
+    public void sendClientMessage(String receiver, String message) {
+        // If the receiver is not found, send an error message
+        if (clientMessages.get(receiver) == null) {
+            sendServerMessage(MessageType.INFO, "MESSAGE FAILED! User not found.");
             return;
-        } catch (Exception e) {
-            sendServerMessage(MessageType.INFO, "MESSAGE FAILED");
         }
+        clientMessages.get(receiver).add(user.username + ": " + message);
+        if (message.contains("has read your message")) // Don't send MESSAGE SENT on read reciepts
+            return;
+        sendServerMessage(MessageType.INFO, "MESSAGE SENT");
     }
 
     public void sendServerMessage(MessageType msgCode, String message) {
-        String ciphertext = AESUtil.encrypt(message, secretKey);
         try {
-            bufferedWriter.write(msgCode + ciphertext);
+            String ciphertext = AESUtil.encrypt(msgCode.prefix + message, secretKey);
+            bufferedWriter.write(ciphertext);
             bufferedWriter.newLine();
             bufferedWriter.flush();
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("An error occured encrypting on the server");
+            closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    public void readAllClientMessages() throws InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException,
-            InvalidAlgorithmParameterException, BadPaddingException, IllegalBlockSizeException, IOException {
-        /* If no messages in storage, send a read error */
-        if (clientMessages.get(user.username).isEmpty()) {
-            sendServerMessage(MessageType.INFO, "READ ERROR");
-            return;
+    public String readEncryptedMessage() {
+        try {
+            return AESUtil.decrypt(bufferedReader.readLine(), secretKey);
+        } catch (IOException e) {
+            sendServerMessage(MessageType.ERROR, "MESSAGE FAILED! An error occured on the server.");
+            return null;
         }
-        /* Send stored messages until the queue is empty */
+    }
+
+    public void readAllClientMessages() {
+        // If no messages in storage, send a read error
+        if (clientMessages.get(user.username).isEmpty()) {
+            sendServerMessage(MessageType.INFO, "READ ERROR! No messages to read.");
+        }
+        // Send stored messages until the queue is empty
         while (!clientMessages.get(user.username).isEmpty()) {
-            sendServerMessage(MessageType.SUCCESS, clientMessages.get(user.username).poll());
+            String message = clientMessages.get(user.username).poll();
+            String sender = message.split(":")[0];
+            sendServerMessage(MessageType.SUCCESS, message);
+
+            // Send read reciept if the sender is not the user, and the message itself is
+            // not a read reciept
+            if (!sender.equals(user.username) && !message.contains("has read your message"))
+                sendClientMessage(sender, "has read your message at " + new Timestamp(System.currentTimeMillis()));
         }
     }
 
     public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
         clients.remove(this);
+        // find user in users by username, and log them out
+        if (user != null) {
+            users.stream().filter(u -> u.username.equals(user.username)).findFirst().ifPresent(u -> u.logout());
+        }
+        System.out.println(user.username + " disconnected!");
         try {
             if (bufferedReader != null) {
                 bufferedReader.close();
@@ -199,8 +203,10 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+
         // Establish shared secret with client
         DiffieHellmanKeyExchange();
+
         // Handle client authentication
         handleAuthentication();
 

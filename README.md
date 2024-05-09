@@ -1,20 +1,16 @@
 # Network Messaging System
 
-## UPDATE:
-
-- To compile : `javac -d bin -sourcepath src src/client/*.java src/server/*.java src/util/*.java`
-- To run : `java -cp bin src/folder/classFile`
-
 ## Overview
 
-This project implements a network messaging system enabling users to leave messages for others. It leverages TCP sockets to facilitate a server capable of storing and retrieving messages, alongside a client for user interaction.
+This Network Messaging System is a secure communication platform that uses TCP sockets for network communication, employs AES-GCM for message encryption, and ensures secure user storage with SHA-256 plus salt hashing for passwords. The system facilitates a Diffie-Hellman key exchange to securely establish session keys between clients and the server.
 
 ## Features
 
-- **User Login:** Secure login system using unique usernames without spaces.
-- **Message Composition:** Users can compose and send messages to other users.
-- **Message Retrieval:** Users can read messages sent to them, which are then removed from the server.
-- **Connection Management:** Supports user exit commands and connection termination on protocol errors.
+- **Secure User Registration and Login**: Uses SHA-256 with salt hashing to securely store user passwords.
+- **Unique Usernames**: Each user must register with a unique username that is used for login and messaging.
+- **End-to-End Encryption**: Utilizes AES-GCM encryption to ensure that messages are securely transmitted over the network. Keys are established through a Diffie-Hellman key exchange at the start of each session.
+- **Message Sending/Receiving**: After successful login, users can send and receive messages from other registered users.
+- **Secure Disconnection**: Users can disconnect from the server securely, ensuring that all session data is properly cleaned up.
 
 ## Getting started
 
