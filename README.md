@@ -16,6 +16,7 @@ This Network Messaging System is a secure communication platform that uses TCP s
 
 - To start a server, run the following: `./startServer <port>`
 - To start a client, run the following: `./startClient <hostname> <port>`
+
 - Example:
 
 ```bash
@@ -25,3 +26,25 @@ This Network Messaging System is a secure communication platform that uses TCP s
 ```bash
 ./startClient.sh localhost 1234
 ```
+
+## Once connected
+
+- **Returning Users**: Log in with your existing credentials.
+- **New Users**: Register with a valid username and password.
+
+## User Validation
+
+- **Usernames**:
+
+  - Must be alphanumeric.
+  - Must be between 4 and 16 characters long.
+  - No whitespace allowed.
+
+- **Passwords**:
+
+  - Must be at least 8 characters long.
+  - Must include at least one numeric character.
+  - Must include at least one uppercase letter.
+  - Must include at least one lowercase letter.
+  - Must include at least one special character (!@#$%^&\*-\_=+/).
+  - No whitespace allowed.
