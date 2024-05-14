@@ -9,14 +9,28 @@ import java.net.Socket;
  * client connections
  * and handles them using separate threads.
  */
+/**
+ * The Server class represents a TCP server that listens for incoming client
+ * connections
+ * and handles them using separate threads.
+ */
 class Server {
 
     private ServerSocket serverSocket;
 
+    /**
+     * Constructs a Server object with the specified ServerSocket.
+     *
+     * @param serverSocket the ServerSocket to be used by the server
+     */
     public Server(ServerSocket serverSocket) {
         this.serverSocket = serverSocket;
     }
 
+    /**
+     * Starts the server by accepting client connections and creating a new thread
+     * to handle each client.
+     */
     public void start() {
         try {
             while (!serverSocket.isClosed()) {
@@ -31,6 +45,9 @@ class Server {
         }
     }
 
+    /**
+     * Closes the server socket.
+     */
     public void closeServerSocket() {
         try {
             if (serverSocket != null)
@@ -40,6 +57,12 @@ class Server {
         }
     }
 
+    /**
+     * The main method of the Server class.
+     * It creates a ServerSocket on the specified port and starts the server.
+     *
+     * @param args the command line arguments, where args[0] is the port number
+     */
     public static void main(String[] args) {
         if (args.length < 1) {
             System.out.println("Usage: java Server <port>");

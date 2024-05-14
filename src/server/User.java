@@ -6,7 +6,7 @@ import src.util.PasswordUtil;
  * User class
  * 
  * Represents a User with a username and password
- * The password is hashed using SHA-256 and a random salt
+ * The password is hashed using SHA-256 + salt
  * 
  */
 public class User {

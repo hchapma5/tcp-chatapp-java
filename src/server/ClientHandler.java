@@ -59,6 +59,19 @@ public class ClientHandler implements Runnable {
 
     }
 
+    /**
+     * Performs a Diffie-Hellman key exchange with the client.
+     * This method generates a key pair, receives the client's public key,
+     * sends the server's public key to the client, and generates a shared secret
+     * key.
+     * The shared secret key is used to derive an AES key for encryption and
+     * decryption.
+     * 
+     * @throws IOException              if an I/O error occurs during the key
+     *                                  exchange process.
+     * @throws GeneralSecurityException if a security error occurs during the key
+     *                                  exchange process.
+     */
     public void DiffieHellmanKeyExchange() {
         try {
             KeyPair keyPair = AESUtil.generateDHKeyPair();
@@ -78,6 +91,21 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Handles the authentication process for the client.
+     * Reads the command sent by the client and performs the necessary actions based
+     * on the command.
+     * If the command is a valid LOGIN command, it checks the username and password
+     * provided by the client.
+     * If the command is a valid REGISTER command, it creates a new user with the
+     * provided username and password.
+     * Sends appropriate messages to the client based on the outcome of the
+     * authentication process.
+     * If the authentication is successful, sends the username and the number of
+     * messages in the client's inbox.
+     * Closes the connection if an invalid command is received or if the user
+     * disconnects.
+     */
     public void handleAuthentication() {
         try {
             String command = readEncryptedMessage();
@@ -113,7 +141,7 @@ public class ClientHandler implements Runnable {
                 this.user = new User(username, password);
                 clients.add(this);
                 users.add(this.user);
-                /* Create a message storage for the new user */
+                // Create a message storage for the new user
                 clientMessages.putIfAbsent(user.username, new LinkedList<>());
                 System.out.println(
                         "Successfully registered user: " + user.username);
@@ -128,6 +156,16 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Sends a message from the current user to the specified receiver.
+     * If the receiver is not found, an error message is sent.
+     * The message is added to the receiver's message list.
+     * If the message contains a read receipt, the method returns without sending a
+     * "MESSAGE SENT" notification.
+     *
+     * @param receiver The username of the message receiver.
+     * @param message  The content of the message.
+     */
     public void sendClientMessage(String receiver, String message) {
         // If the receiver is not found, send an error message
         if (clientMessages.get(receiver) == null) {
@@ -140,6 +178,12 @@ public class ClientHandler implements Runnable {
         sendServerMessage(MessageType.INFO, "MESSAGE SENT");
     }
 
+    /**
+     * Sends a server message to the client.
+     *
+     * @param msgCode the message type code
+     * @param message the message to be sent
+     */
     public void sendServerMessage(MessageType msgCode, String message) {
         try {
             String ciphertext = AESUtil.encrypt(msgCode.prefix + message, secretKey);
@@ -152,6 +196,12 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Reads an encrypted message from the client and decrypts it using the secret
+     * key.
+     * 
+     * @return the decrypted message as a String, or null if an error occurs
+     */
     public String readEncryptedMessage() {
         try {
             return AESUtil.decrypt(bufferedReader.readLine(), secretKey);
@@ -161,24 +211,46 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Reads all the messages stored for the current client.
+     * If there are no messages in storage, it sends a read error message to the
+     * server.
+     * Otherwise, it sends the stored messages to the server and sends a read
+     * receipt to the message senders.
+     */
     public void readAllClientMessages() {
         // If no messages in storage, send a read error
         if (clientMessages.get(user.username).isEmpty()) {
             sendServerMessage(MessageType.INFO, "READ ERROR! No messages to read.");
+            return;
         }
+        StringBuilder messages = new StringBuilder();
         // Send stored messages until the queue is empty
         while (!clientMessages.get(user.username).isEmpty()) {
             String message = clientMessages.get(user.username).poll();
+            // if message is the tailing message, don't append a newline
+            messages.append(clientMessages.get(user.username).peek() == null ? message : message + "\n");
             String sender = message.split(":")[0];
-            sendServerMessage(MessageType.SUCCESS, message);
 
             // Send read reciept if the sender is not the user, and the message itself is
             // not a read reciept
             if (!sender.equals(user.username) && !message.contains("has read your message"))
                 sendClientMessage(sender, "has read your message at " + new Timestamp(System.currentTimeMillis()));
         }
+        sendServerMessage(MessageType.SUCCESS, messages.toString());
     }
 
+    /**
+     * Removes the client from the list of active clients, logs out the user if
+     * logged in,
+     * and closes the socket, BufferedReader, and BufferedWriter.
+     *
+     * @param socket         the Socket object representing the client's connection
+     * @param bufferedReader the BufferedReader object used for reading input from
+     *                       the client
+     * @param bufferedWriter the BufferedWriter object used for writing output to
+     *                       the client
+     */
     public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
         clients.remove(this);
         // find user in users by username, and log them out
@@ -201,6 +273,15 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    /**
+     * Executes the main logic for handling a client connection.
+     * This method establishes a shared secret with the client using Diffie-Hellman
+     * key exchange,
+     * handles client authentication, and processes valid commands received from the
+     * client.
+     * The method continues to handle commands until the client disconnects or an
+     * error occurs.
+     */
     @Override
     public void run() {
 
